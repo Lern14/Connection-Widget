@@ -1,0 +1,170 @@
+import tkinter as tk
+from tkinter import ttk
+import subprocess
+import re
+
+class ConnectionWidget:
+    def __init__(self, master, connections):
+        self.master = master
+        master.title("Connection Widget")
+
+        
+        self.column_order = ["Лок.сервера", "Пользователи_БЕЛ", "Пользователи_УК", "Служебное"]
+
+        
+        self.frames = {column: ttk.Labelframe(master, text=column) for column in self.column_order}
+
+        
+        self.buttons = {column: [] for column in self.column_order}
+        for connection_info in connections.values():
+            column = connection_info.get("column", "ЦОД")
+            frame = self.frames[column]
+            button = self.create_button(frame, connection_info)
+            self.buttons[column].append(button)
+
+        
+        self.hide_var = {column: tk.BooleanVar(value=True) for column in self.column_order}
+        for i, column in enumerate(self.column_order):
+            ttk.Checkbutton(master, text=column, variable=self.hide_var[column],
+                            command=lambda c=column: self.toggle_column(c)).grid(row=i, column=0, padx=10, pady=5, sticky="w")
+
+        
+        ttk.Label(master, text="Поиск:").grid(row=len(self.column_order), column=0, padx=10, pady=10, sticky="e")
+        self.search_var = tk.StringVar()
+        search_entry = ttk.Entry(master, textvariable=self.search_var, width=20)
+        search_entry.grid(row=len(self.column_order), column=1, columnspan=len(self.column_order), pady=10)
+        search_entry.bind("<KeyRelease>", self.filter_buttons)
+
+        
+        chrome_button = tk.Button(master, text="Open keeweb in Chrome", command=self.open_in_chrome)
+        chrome_button.grid(row=len(self.column_order) + 1, column=0, padx=10, pady=5, sticky="w")
+
+        firefox_button = tk.Button(master, text="Open keeweb in Firefox", command=self.open_in_firefox)
+        firefox_button.grid(row=len(self.column_order) + 1, column=1, padx=10, pady=5, sticky="w")
+
+       
+        for i, column in enumerate(self.column_order):
+            self.frames[column].grid(row=i, column=1, padx=10, pady=10, sticky="nsew")
+            self.master.rowconfigure(i, weight=1)
+
+       
+        self.initial_state = None
+
+       
+        self.apply_initial_state()
+
+    def apply_initial_state(self):
+        
+        if self.initial_state is None:
+            # Запомнить текущее состояние виджета
+            self.initial_state = {
+                "column_order": self.column_order.copy(),
+                "hide_var": {column: self.hide_var[column].get() for column in self.column_order},
+                "search_var": self.search_var.get()
+            }
+        else:
+           
+            self.column_order = self.initial_state["column_order"]
+            for column in self.column_order:
+                self.hide_var[column].set(self.initial_state["hide_var"][column])
+                self.toggle_column(column)
+
+            self.search_var.set(self.initial_state["search_var"])
+            self.filter_buttons(None)  # Вызвать функцию фильтрации после возвращения в исходное состояние
+
+    def create_button(self, frame, connection_info):
+       
+        button_text = connection_info.get("name", f"{connection_info['type']}_{connection_info['host']}")
+        button = ttk.Button(frame, text=button_text, command=lambda c=connection_info: self.connect_to_host(c))
+        button.pack(pady=5)
+        return button
+
+    def toggle_column(self, column):
+        
+        if self.hide_var[column].get():
+            self.frames[column].grid()
+        else:
+            self.frames[column].grid_remove()
+
+    def filter_buttons(self, event):
+        search_query = self.search_var.get().lower()
+
+        
+        for column in self.column_order:
+            buttons_in_column = self.buttons[column]
+            column_frame = self.frames[column]
+
+            
+            if search_query:
+                
+                matches = [button for button in buttons_in_column if re.search(search_query, button["text"].lower())]
+                if matches:
+                    # Если есть совпадения, показать столбец
+                    column_frame.grid()
+
+                    
+                    for button in buttons_in_column:
+                        if button in matches:
+                            button.pack(pady=5)  # Показать кнопку
+                            button.configure(style='')  # Подсветить совпадающую кнопку зеленым
+                        else:
+                            button.pack_forget()  # Скрыть кнопку
+                else:
+                    
+                    column_frame.grid_remove()
+                    for button in buttons_in_column:
+                        button.pack_forget()
+            else:
+                
+                column_frame.grid()
+                for button in buttons_in_column:
+                    button.pack(pady=5)
+                    button.configure(style='')
+
+        
+        if not search_query:
+            for column in self.column_order:
+                self.toggle_column(column)
+
+    def connect_to_host(self, connection_info):
+        if connection_info["type"] == "SSH":
+            self.connect_to_ssh(connection_info)
+        elif connection_info["type"] == "RDP":
+            self.connect_to_rdp(connection_info)
+        elif connection_info["type"] == "VNC":
+            self.connect_to_vnc(connection_info)
+
+    def connect_to_ssh(self, connection_info):
+        putty_path = r'C:\Connection_Widget\putty.exe'  # ____________________________________Замените на фактический путь к putty.exe на вашем компьютере
+        subprocess.Popen([putty_path, '-ssh', f'{connection_info["username"]}@{connection_info["host"]}', '-P',
+                          str(connection_info["port"])])
+
+    def open_in_chrome(self):
+        url = "https://keeweb.paruscapital.com"
+        subprocess.Popen(['start', 'chrome', url], shell=True)
+
+    def open_in_firefox(self):
+        url = "https://keeweb.paruscapital.com"
+        subprocess.Popen(['start', 'firefox', url], shell=True)
+
+    def connect_to_rdp(self, connection_info):
+        mstsc_path = r'C:\Windows\System32\mstsc.exe'
+        subprocess.Popen([mstsc_path, f'/v:{connection_info["host"]}:{connection_info["port"]}'])
+
+    def connect_to_vnc(self, connection_info):
+        vnc_viewer_path = r'C:\Connection_Widget\tvnviewer.exe'  #______________________________________ Замените на путь к вашему VNC Viewer
+        subprocess.Popen([vnc_viewer_path, f'{connection_info["host"]}:{connection_info["port"]}'])
+
+
+
+
+if __name__ == "__main__":
+    # Пример 
+    connections = {
+        ##СЕРВЕРА_БЕЛ        ________________________________________________________________________________________________________________________________
+        "RDP_sauron": {"type": "RDP", "host": "AD123", "port": 3389, "column": "Лок.сервера", "name": "RDP_AD123"},
+        "SSH_kew": {"type": "SSH", "host": "192.168.100.100", "port": 22, "username": "master","column": "Лок.сервера", "name": "SSH_kew"},
+        ##ПОЛЬЗОВАТЕЛИ_БЕЛ       _______________________________________________________________________________________________________________________________
+
+        "VNC_mayorov.am": {"type": "VNC", "host": "W345", "port": 5900, "column": "Пользователи_БЕЛ","name": "VNC_petrov.am"},
+
